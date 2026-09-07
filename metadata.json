@@ -1,0 +1,6 @@
+{
+  "name": "SynbioAI Palantir",
+  "description": "A scientific imagination platform connecting frontier tech ideas with global research teams to accelerate productivity.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
