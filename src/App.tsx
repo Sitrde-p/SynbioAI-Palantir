@@ -21,10 +21,12 @@ import LandingView from './components/LandingView';
 import InspirationView from './components/InspirationView';
 import PostIdeaView from './components/PostIdeaView';
 import { Modal } from './components/Modal';
-import { Category, ImaginationNote, CommentItem, DomainCategory, UserAccount, isUserAdmin } from './types';
+import { Category, ImaginationNote, CommentItem, DomainCategory, UserAccount, isUserAdmin, CommunityPost } from './types';
 import { INITIAL_NOTES } from './data/mockNotes';
 import { RESEARCH_LABS, ResearchLab } from './data/mockLabs';
 import { Send, MapPin, Tag, CheckCircle2, Trash2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useAuth } from './hooks/useAuth';
+import { supabase } from './supabase';
 
 type ViewMode =
   | 'landing'
@@ -43,29 +45,20 @@ export default function App() {
   const [selectedLab, setSelectedLab] = useState<ResearchLab | null>(null);
   const [interestTargetLab, setInterestTargetLab] = useState<ResearchLab | null>(null);
 
-  // Persistent Current User Account
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    try {
-      const savedUser = localStorage.getItem('synbio_current_user');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        if (parsed && parsed.email?.toLowerCase().trim() !== 'admin@synbio.org') {
-          if (parsed.role === 'admin') {
-            parsed.role = 'creator';
-          }
-        }
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to load current user', e);
-    }
-    return null;
-  });
+  // Authentication & User State from Supabase useAuth hook
+  const { user: currentUser, setUser: setCurrentUser, signOut, loading: authLoading } = useAuth();
 
-  // Persistent Notes
-  const [notes, setNotes] = useState<ImaginationNote[]>(() => {
+  // Redirect unauthenticated users from Dashboard to sign in page
+  useEffect(() => {
+    if (!authLoading && viewMode === 'dashboard' && !currentUser) {
+      setViewMode('signin');
+    }
+  }, [viewMode, currentUser, authLoading]);
+
+  // Mock Notes (Local fallback items with mock_ prefix)
+  const [mockNotes, setMockNotes] = useState<ImaginationNote[]>(() => {
     try {
-      const saved = localStorage.getItem('synbio_imagination_notes');
+      const saved = localStorage.getItem('synbio_mock_notes');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -73,19 +66,80 @@ export default function App() {
         }
       }
     } catch (e) {
-      console.error('Failed to load persistent notes', e);
+      console.error('Failed to load persistent mock notes', e);
     }
     return INITIAL_NOTES;
   });
 
-  // Sync notes to localStorage
+  // Real Notes from Supabase
+  const [realNotes, setRealNotes] = useState<ImaginationNote[]>([]);
+
+  // Combined Notes: Real data in front, Mock data in back
+  const notes = React.useMemo(() => [...realNotes, ...mockNotes], [realNotes, mockNotes]);
+
+  // Load real ideas from Supabase
+  useEffect(() => {
+    const fetchIdeas = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('ideas')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          const mapped: ImaginationNote[] = data.map((item: any) => {
+            const rowId = item.id?.toString() || `idea_${Date.now()}`;
+            return {
+              id: rowId,
+              dbId: rowId,
+              isMock: false,
+              title: item.title,
+              domain: item.domain || 'Biomedicine',
+              description: item.hypothesis || '',
+              fullDetails:
+                item.hypothesis ||
+                `## Project Vision & Scientific Scope\n${item.hypothesis}\n\n### Anticipated Breakthrough\nInitiated by ${item.author_name || 'Independent Researcher'} for collaborative validation.`,
+              location: item.host_lab || 'Global Bio-Node',
+              createdAt: item.created_at || new Date().toISOString(),
+              author: {
+                name: item.author_name || 'Independent Researcher',
+                role: 'Verified Investigator',
+                avatar:
+                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=160',
+                institution: item.host_lab || 'Open Science Frontier Collective',
+              },
+              image:
+                'https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&q=80&w=1200',
+              tags: Array.isArray(item.keywords)
+                ? item.keywords
+                : item.keywords
+                ? item.keywords.split(',')
+                : [item.domain || 'Synthetic Biology'],
+              stage: 'Idea',
+              likes: item.likes || 1,
+              comments: 0,
+              commentsList: [],
+              isLiked: false,
+              isUserSubmitted: true,
+              authorEmail: undefined,
+            };
+          });
+          setRealNotes(mapped);
+        }
+      } catch (err) {
+        console.warn('Could not fetch ideas from Supabase:', err);
+      }
+    };
+    fetchIdeas();
+  }, []);
+
+  // Sync mock notes to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('synbio_imagination_notes', JSON.stringify(notes));
+      localStorage.setItem('synbio_mock_notes', JSON.stringify(mockNotes));
     } catch (e) {
-      console.error('Failed to save notes to storage', e);
+      console.error('Failed to save mock notes to storage', e);
     }
-  }, [notes]);
+  }, [mockNotes]);
 
   // Persistent Saved Labs
   const [savedLabIds, setSavedLabIds] = useState<string[]>(() => {
@@ -95,7 +149,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    return ['lab-1', 'lab-2'];
+    return [];
   });
 
   useEffect(() => {
@@ -113,6 +167,9 @@ export default function App() {
   };
 
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
+  const [openCommunityNewPost, setOpenCommunityNewPost] = useState(false);
+  const [openCommunityEditPost, setOpenCommunityEditPost] = useState<CommunityPost | null>(null);
+  const [openCommunityViewingPostId, setOpenCommunityViewingPostId] = useState<string | null>(null);
   const [selectedCollaborateNote, setSelectedCollaborateNote] = useState<ImaginationNote | null>(null);
   const [selectedDetailNote, setSelectedDetailNote] = useState<ImaginationNote | null>(null);
   const [noteToDelete, setNoteToDelete] = useState<ImaginationNote | null>(null);
@@ -148,12 +205,53 @@ export default function App() {
     setNoteToDelete(target);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!noteToDelete) return;
     const deletedId = noteToDelete.id;
     const deletedTitle = noteToDelete.title;
+    const isMock = !!noteToDelete.isMock || !noteToDelete.dbId || String(deletedId).startsWith('mock_');
 
-    setNotes((prevNotes) => prevNotes.filter((n) => n.id !== deletedId));
+    if (isMock) {
+      // Iron Rule 2: Mock data only deleted from local state, never calls Supabase
+      setMockNotes((prev) => prev.filter((n) => n.id !== deletedId));
+      if (selectedDetailNote && selectedDetailNote.id === deletedId) {
+        setSelectedDetailNote(null);
+      }
+      if (selectedCollaborateNote && selectedCollaborateNote.id === deletedId) {
+        setSelectedCollaborateNote(null);
+      }
+      setNoteToDelete(null);
+      setToastMessage('示例数据已从当前视图隐藏（刷新页面将重新出现，属正常现象）');
+      setTimeout(() => setToastMessage(null), 4000);
+      return;
+    }
+
+    // Real data: Delete from Supabase first
+    const targetDbId = noteToDelete.dbId || deletedId;
+    console.log('Calling Supabase delete on ideas...', targetDbId);
+
+    try {
+      const { error } = await supabase
+        .from('ideas')
+        .delete()
+        .eq('id', targetDbId);
+
+      if (error) {
+        console.error('Supabase delete error on ideas:', error);
+        setToastMessage(`Failed to delete idea: ${error.message || 'Database error'}`);
+        setTimeout(() => setToastMessage(null), 4000);
+        setNoteToDelete(null);
+        return;
+      }
+    } catch (err: any) {
+      console.error('Error deleting idea from Supabase:', err);
+      setToastMessage(`Failed to delete idea: ${err?.message || 'Database error'}`);
+      setTimeout(() => setToastMessage(null), 4000);
+      setNoteToDelete(null);
+      return;
+    }
+
+    setRealNotes((prev) => prev.filter((n) => n.id !== deletedId && n.dbId !== deletedId));
     if (selectedDetailNote && selectedDetailNote.id === deletedId) {
       setSelectedDetailNote(null);
     }
@@ -184,70 +282,61 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Update note item across realNotes and mockNotes
+  const updateNoteItem = (noteId: string, updater: (n: ImaginationNote) => ImaginationNote) => {
+    setRealNotes((prev) => prev.map((n) => (n.id === noteId ? updater(n) : n)));
+    setMockNotes((prev) => prev.map((n) => (n.id === noteId ? updater(n) : n)));
+  };
+
   // Toggle Like Handler
   const handleToggleLike = (noteId: string) => {
-    setNotes((prevNotes) =>
-      prevNotes.map((note) => {
-        if (note.id === noteId) {
-          const isCurrentlyLiked = !!note.isLiked;
-          const updatedNote = {
-            ...note,
-            isLiked: !isCurrentlyLiked,
-            likes: isCurrentlyLiked ? note.likes - 1 : note.likes + 1
-          };
-          if (selectedDetailNote && selectedDetailNote.id === noteId) {
-            setSelectedDetailNote(updatedNote);
-          }
-          return updatedNote;
-        }
-        return note;
-      })
-    );
+    updateNoteItem(noteId, (note) => {
+      const isCurrentlyLiked = !!note.isLiked;
+      const updatedNote = {
+        ...note,
+        isLiked: !isCurrentlyLiked,
+        likes: isCurrentlyLiked ? note.likes - 1 : note.likes + 1,
+      };
+      if (selectedDetailNote && selectedDetailNote.id === noteId) {
+        setSelectedDetailNote(updatedNote);
+      }
+      return updatedNote;
+    });
   };
 
   // Toggle Save (Bookmark) Idea Handler
   const handleToggleSaveNote = (noteId: string) => {
-    setNotes((prevNotes) =>
-      prevNotes.map((note) => {
-        if (note.id === noteId) {
-          const nextSaved = !note.isSaved;
-          const updatedNote = {
-            ...note,
-            isSaved: nextSaved
-          };
-          if (selectedDetailNote && selectedDetailNote.id === noteId) {
-            setSelectedDetailNote(updatedNote);
-          }
-          return updatedNote;
-        }
-        return note;
-      })
-    );
+    updateNoteItem(noteId, (note) => {
+      const nextSaved = !note.isSaved;
+      const updatedNote = {
+        ...note,
+        isSaved: nextSaved,
+      };
+      if (selectedDetailNote && selectedDetailNote.id === noteId) {
+        setSelectedDetailNote(updatedNote);
+      }
+      return updatedNote;
+    });
   };
 
   // Add Comment Handler
   const handleAddComment = (noteId: string, comment: CommentItem) => {
-    setNotes((prevNotes) =>
-      prevNotes.map((note) => {
-        if (note.id === noteId) {
-          const existingList = note.commentsList || [];
-          const updatedNote = {
-            ...note,
-            comments: note.comments + 1,
-            commentsList: [comment, ...existingList]
-          };
-          if (selectedDetailNote && selectedDetailNote.id === noteId) {
-            setSelectedDetailNote(updatedNote);
-          }
-          return updatedNote;
-        }
-        return note;
-      })
-    );
+    updateNoteItem(noteId, (note) => {
+      const existingList = note.commentsList || [];
+      const updatedNote = {
+        ...note,
+        comments: note.comments + 1,
+        commentsList: [comment, ...existingList],
+      };
+      if (selectedDetailNote && selectedDetailNote.id === noteId) {
+        setSelectedDetailNote(updatedNote);
+      }
+      return updatedNote;
+    });
   };
 
   // Unified Idea Publication logic used by both modal and full page /post-idea
-  const createAndPublishIdea = (data: {
+  const createAndPublishIdea = async (data: {
     title: string;
     domain: DomainCategory;
     description: string;
@@ -264,47 +353,75 @@ export default function App() {
       data.authorName?.trim() ||
       (currentUser ? currentUser.name : 'Independent Researcher');
 
-    const newNote: ImaginationNote = {
-      id: `note_${Date.now()}`,
-      title: data.title.trim(),
-      domain: data.domain,
-      description: data.description.trim(),
-      fullDetails: `## Project Vision & Scientific Scope\n${data.description.trim()}\n\n### Anticipated Breakthrough & Key Milestones\nInitiated by ${authorDisplayName} seeking collaborative validation across computational biology, high-throughput biofoundries, or translational pipelines.`,
-      location: data.location?.trim() || 'San Francisco, CA · Bio-Innovation Node',
-      createdAt: new Date().toISOString(),
-      author: {
-        name: authorDisplayName,
-        role: currentUser ? 'Verified Investigator' : 'Independent Researcher',
-        avatar:
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=160',
-        institution: 'Open Science Frontier Collective',
-      },
-      image:
-        'https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&q=80&w=1200',
-      tags:
-        tagList.length > 0
-          ? tagList
-          : [data.domain, 'FrontierResearch', 'OpenInitiative'],
-      stage: 'Idea',
-      likes: 1,
-      comments: 0,
-      commentsList: [],
-      isLiked: true, // Creator automatically bookmarks their own post
-      isUserSubmitted: true,
-      authorEmail: currentUser ? currentUser.email : undefined,
-    };
+    // Insert into Supabase ideas table with .select() to get real UUID
+    try {
+      const { data: insertedData, error } = await supabase
+        .from('ideas')
+        .insert({
+          title: data.title.trim(),
+          domain: data.domain,
+          author_name: authorDisplayName,
+          host_lab: data.location?.trim() || 'Global Bio-Node',
+          keywords: tagList.length > 0 ? tagList : [data.domain, 'FrontierResearch', 'OpenInitiative'],
+          hypothesis: data.description.trim(),
+          author_id: currentUser?.id || null,
+          likes: 1,
+        })
+        .select();
 
-    // Prepend to notes list
-    setNotes((prev) => [newNote, ...prev]);
+      if (error) {
+        console.warn('Could not save idea to Supabase:', error);
+        setToastMessage(`Error publishing idea: ${error.message || 'Database error'}`);
+        setTimeout(() => setToastMessage(null), 5000);
+      } else {
+        const row = insertedData && insertedData[0];
+        const realId = row ? row.id.toString() : `idea_${Date.now()}`;
+        const newRealNote: ImaginationNote = {
+          id: realId,
+          dbId: realId,
+          isMock: false,
+          title: data.title.trim(),
+          domain: data.domain,
+          description: data.description.trim(),
+          fullDetails: `## Project Vision & Scientific Scope\n${data.description.trim()}\n\n### Anticipated Breakthrough & Key Milestones\nInitiated by ${authorDisplayName} seeking collaborative validation across computational biology, high-throughput biofoundries, or translational pipelines.`,
+          location: data.location?.trim() || 'Global Bio-Node',
+          createdAt: row?.created_at || new Date().toISOString(),
+          author: {
+            name: authorDisplayName,
+            role: currentUser ? 'Verified Investigator' : 'Independent Researcher',
+            avatar:
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=160',
+            institution: 'Open Science Frontier Collective',
+          },
+          image:
+            'https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&q=80&w=1200',
+          tags:
+            tagList.length > 0
+              ? tagList
+              : [data.domain, 'FrontierResearch', 'OpenInitiative'],
+          stage: 'Idea',
+          likes: 1,
+          comments: 0,
+          commentsList: [],
+          isLiked: true, // Creator automatically bookmarks their own post
+          isUserSubmitted: true,
+          authorEmail: currentUser ? currentUser.email : undefined,
+        };
+
+        setRealNotes((prev) => [newRealNote, ...prev]);
+        setToastMessage(`Scientific idea "${newRealNote.title.slice(0, 32)}..." published successfully!`);
+        setTimeout(() => setToastMessage(null), 4500);
+      }
+    } catch (err: any) {
+      console.warn('Could not save idea to Supabase:', err);
+      setToastMessage(`Error publishing idea: ${err?.message || 'Database error'}`);
+      setTimeout(() => setToastMessage(null), 5000);
+    }
 
     // Ensure user is on Inspiration Square feed so the newly generated idea is immediately visible
     setViewMode('main');
     setActiveCategory('Inspiration Square');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    // Notification toast
-    setToastMessage(`Scientific idea "${newNote.title.slice(0, 32)}..." has been published!`);
-    setTimeout(() => setToastMessage(null), 4500);
   };
 
   // Publish New Imagination Note from modal
@@ -337,9 +454,8 @@ export default function App() {
   };
 
   // Sign out handler
-  const handleSignOut = () => {
-    localStorage.removeItem('synbio_current_user');
-    setCurrentUser(null);
+  const handleSignOut = async () => {
+    await signOut();
     setViewMode('main');
     setActiveCategory('Inspiration Square');
     setToastMessage('Signed out successfully.');
@@ -382,9 +498,10 @@ export default function App() {
   const savedLabs = RESEARCH_LABS.filter((lab) => savedLabIds.includes(lab.id));
   const userSubmissions = notes.filter(
     (n) =>
+      n.isUserSubmitted &&
       currentUser &&
-      (n.author.name.toLowerCase() === currentUser.name.toLowerCase() ||
-        n.author.name.toLowerCase() === currentUser.email.toLowerCase())
+      ((n.authorEmail && currentUser.email && n.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+        (n.author?.name && currentUser.name && n.author.name.toLowerCase() === currentUser.name.toLowerCase()))
   );
 
   const renderContent = () => {
@@ -455,6 +572,7 @@ export default function App() {
     if (viewMode === 'lab-application') {
       return (
         <LabApplicationView
+          currentUser={currentUser}
           onBack={() => {
             setActiveCategory('Synthetic Biology');
             setViewMode('main');
@@ -484,22 +602,24 @@ export default function App() {
             setSelectedLab(lab);
             setViewMode('lab-detail');
           }}
-          onUpdateProfile={(updated) => {
+          onUpdateProfile={async (updated) => {
             const next = { ...currentUser, ...updated };
             setCurrentUser(next);
-            localStorage.setItem('synbio_current_user', JSON.stringify(next));
-            // Also update in registered users array
             try {
-              const raw = localStorage.getItem('synbio_registered_users');
-              if (raw) {
-                const list = JSON.parse(raw);
-                const updatedList = list.map((u: any) =>
-                  u.email.toLowerCase() === next.email.toLowerCase() ? { ...u, ...next } : u
-                );
-                localStorage.setItem('synbio_registered_users', JSON.stringify(updatedList));
+              localStorage.setItem('synbio_current_user', JSON.stringify(next));
+              if (currentUser?.id) {
+                await supabase
+                  .from('profiles')
+                  .update({
+                    name: next.name,
+                    bio: next.bio,
+                    affiliation: next.affiliation,
+                    identity_tag: next.identityTag,
+                  })
+                  .eq('id', currentUser.id);
               }
             } catch (err) {
-              console.error(err);
+              console.error('Profile update sync error:', err);
             }
           }}
           onBrowseIdeas={() => {
@@ -515,6 +635,20 @@ export default function App() {
             setActiveCategory('Synthetic Biology');
           }}
           onPostIdea={handleTriggerPostIdea}
+          onApplyToJoinLab={() => setViewMode('lab-application')}
+          onGoToCommunity={(options) => {
+            if (options?.openNewPost) {
+              setOpenCommunityNewPost(true);
+            }
+            if (options?.editPost) {
+              setOpenCommunityEditPost(options.editPost);
+            }
+            if (options?.targetPostId) {
+              setOpenCommunityViewingPostId(options.targetPostId);
+            }
+            setViewMode('main');
+            setActiveCategory('AI Community');
+          }}
         />
       );
     }
@@ -569,6 +703,12 @@ export default function App() {
           <CommunityView
             currentUser={currentUser}
             onRequireAuth={() => setViewMode('signin')}
+            initialOpenNewPost={openCommunityNewPost}
+            onResetInitialOpenNewPost={() => setOpenCommunityNewPost(false)}
+            initialEditingPost={openCommunityEditPost}
+            onResetInitialEditingPost={() => setOpenCommunityEditPost(null)}
+            initialViewingPostId={openCommunityViewingPostId}
+            onResetInitialViewingPostId={() => setOpenCommunityViewingPostId(null)}
           />
         );
       default:
@@ -621,6 +761,17 @@ export default function App() {
         onLanding={() => {
           setViewMode('landing');
           window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onSelectNote={(note) => {
+          setSelectedDetailNote(note);
+        }}
+        onSelectLab={(lab) => {
+          setSelectedLab(lab);
+          setViewMode('lab-detail');
+        }}
+        onSelectDiscussion={() => {
+          setActiveCategory('AI Community');
+          setViewMode('main');
         }}
         isAdminActive={viewMode === 'admin'}
         onSignOut={handleSignOut}

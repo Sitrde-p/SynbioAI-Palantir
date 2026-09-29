@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Building2,
@@ -17,6 +17,7 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { RESEARCH_LABS, ResearchLab } from '../data/mockLabs';
+import { supabase } from '../supabase';
 
 interface LabViewProps {
   onSelectLab: (lab: ResearchLab) => void;
@@ -36,6 +37,87 @@ export default function LabView({
   const [selectedDomain, setSelectedDomain] = useState<string>('All Domains');
   const [selectedInstitution, setSelectedInstitution] = useState<string>('All Institutions');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [dbLabs, setDbLabs] = useState<ResearchLab[]>([]);
+
+  const fetchApprovedLabs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('labs')
+        .select('*')
+        .eq('status', 'approved')
+        .order('joined_at', { ascending: false });
+
+      if (!error && data) {
+        const mapped: ResearchLab[] = data.map((item: any) => {
+          const rowId = item.id?.toString() || `lab_${Date.now()}`;
+          return {
+            id: rowId,
+            dbId: rowId,
+            isMock: false,
+            name: item.name,
+            institution: item.institution || 'Research Institution',
+            domain: (item.domain as any) || 'Synthetic Biology',
+            location: item.institution || 'Global Node',
+            leadPI: item.pi_name || 'Lead Investigator',
+            contactEmail: item.contact_email || 'lab@synbio.org',
+            capacityStatus: 'Available',
+            summary: item.team_overview || 'Advanced frontier research facility.',
+            fullBio: item.team_overview || 'Frontier scientific facility.',
+            teamMembers: [
+              {
+                name: item.pi_name || 'Principal Investigator',
+                role: 'Lead PI',
+                avatar:
+                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=160',
+              },
+            ],
+            pastProjects: [
+              {
+                title: item.past_projects || 'Translational Bio-Design',
+                year: '2024',
+                outcome: 'Peer-reviewed milestone',
+                tag: item.domain || 'Synthetic Biology',
+              },
+            ],
+            acceptingCreativeDirections: ['Bioengineering', 'Computational Biology'],
+            establishedYear: item.joined_at ? new Date(item.joined_at).getFullYear().toString() : '2024',
+            researchDirections: Array.isArray(item.research_directions)
+              ? item.research_directions
+              : item.research_directions
+              ? item.research_directions.split(',')
+              : [item.domain || 'Synthetic Biology'],
+            representativeProjects: Array.isArray(item.past_projects)
+              ? item.past_projects
+              : item.past_projects
+              ? [item.past_projects]
+              : ['Frontier Research Initiative'],
+            matchScore: 95,
+          };
+        });
+        setDbLabs(mapped);
+      }
+    } catch (err) {
+      console.warn('Could not load approved labs:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchApprovedLabs();
+
+    const handleLabsUpdated = () => {
+      fetchApprovedLabs();
+    };
+
+    window.addEventListener('synbio_labs_updated', handleLabsUpdated);
+    return () => {
+      window.removeEventListener('synbio_labs_updated', handleLabsUpdated);
+    };
+  }, []);
+
+  // Real labs in front, Mock labs in back
+  const allLabs = useMemo(() => {
+    return [...dbLabs, ...RESEARCH_LABS];
+  }, [dbLabs]);
 
   // Domain Options
   const domainOptions = [
@@ -49,13 +131,13 @@ export default function LabView({
 
   // Unique Institutions derived from data
   const institutionOptions = useMemo(() => {
-    const list = Array.from(new Set(RESEARCH_LABS.map((l) => l.institution)));
+    const list = Array.from(new Set(allLabs.map((l) => l.institution)));
     return ['All Institutions', ...list];
-  }, []);
+  }, [allLabs]);
 
   // Filtered labs
   const filteredLabs = useMemo(() => {
-    return RESEARCH_LABS.filter((lab) => {
+    return allLabs.filter((lab) => {
       const matchDomain =
         selectedDomain === 'All Domains' || lab.domain === selectedDomain;
       const matchInstitution =
@@ -74,7 +156,7 @@ export default function LabView({
 
       return matchDomain && matchInstitution && matchQuery;
     });
-  }, [selectedDomain, selectedInstitution, searchQuery]);
+  }, [allLabs, selectedDomain, selectedInstitution, searchQuery]);
 
   return (
     <div className="min-h-screen pt-28 pb-24 px-4 sm:px-8 lg:px-16 max-w-7xl mx-auto bg-black text-white">

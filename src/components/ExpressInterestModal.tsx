@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ResearchLab } from '../data/mockLabs';
 import { UserInterest } from '../types';
+import { supabase } from '../supabase';
 
 interface ExpressInterestModalProps {
   lab: ResearchLab;
@@ -101,23 +102,49 @@ export default function ExpressInterestModal({
       }),
     };
 
-    try {
-      const stored = localStorage.getItem('synbio_user_interests');
-      const list: UserInterest[] = stored ? JSON.parse(stored) : [];
-      list.unshift(newInterest);
-      localStorage.setItem('synbio_user_interests', JSON.stringify(list));
-      window.dispatchEvent(new Event('synbio_interests_updated'));
-    } catch (err) {
-      console.error('Failed to persist user interest:', err);
-    }
+    const persistInterest = async () => {
+      try {
+        const { error } = await supabase.from('interests').insert({
+          lab_id: lab.id,
+          full_name: applicantName.trim(),
+          contact_email: applicantEmail.trim(),
+          affiliation: organization.trim(),
+          collaboration_type: collaborationType.trim(),
+          proposed_topic: proposedProjectTitle.trim(),
+          proposal_details: projectSummary.trim(),
+          status: 'pending',
+          user_id: savedUser?.id || null,
+        });
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsSubmitted(true);
-      if (onSuccessToast) {
-        onSuccessToast(`Collaboration interest sent to ${lab.name}!`);
+        if (error) {
+          console.warn('Could not insert to Supabase interests table:', error);
+          setErrorMessage(`Failed to submit expression: ${error.message || 'Database error'}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        try {
+          const stored = localStorage.getItem('synbio_user_interests');
+          const list: UserInterest[] = stored ? JSON.parse(stored) : [];
+          list.unshift(newInterest);
+          localStorage.setItem('synbio_user_interests', JSON.stringify(list));
+          window.dispatchEvent(new Event('synbio_interests_updated'));
+        } catch (err) {
+          console.error('Failed to persist user interest:', err);
+        }
+
+        setIsSubmitting(false);
+        setIsSubmitted(true);
+        if (onSuccessToast) {
+          onSuccessToast(`Collaboration interest sent to ${lab.name}!`);
+        }
+      } catch (err: any) {
+        console.warn('Could not insert to Supabase interests table:', err);
+        setErrorMessage(`Failed to submit expression: ${err?.message || 'Database error'}`);
+        setIsSubmitting(false);
       }
-    }, 600);
+    };
+    persistInterest();
   };
 
   return (

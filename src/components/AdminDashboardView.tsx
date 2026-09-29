@@ -27,6 +27,7 @@ import {
   AdminLabApplication,
   AdminUserItem,
 } from '../types';
+import { supabase } from '../supabase';
 
 interface AdminDashboardViewProps {
   currentUser: UserAccount;
@@ -70,17 +71,6 @@ const DEFAULT_ADMIN_IDEAS: AdminIdeaItem[] = [
     description:
       'Continuous droplet microfluidics for scalable cell-free polymerization of high-tensile structural biomaterials.',
   },
-  {
-    id: 'idea-rev-4',
-    title: 'Optogenetic Opto-Kinase Switches for Neuronal Spiking Tracking',
-    submitterName: 'Dr. Chloe Monet',
-    submitterEmail: 'cmonet@pasteur.fr',
-    domain: 'Neurotech',
-    submittedAt: '3 days ago',
-    status: 'Rejected',
-    description:
-      'Red-shifted rhodopsin kinase fusion constructs enabling two-photon interrogation of dendritic signal integration.',
-  },
 ];
 
 const DEFAULT_ADMIN_LABS: AdminLabApplication[] = [
@@ -106,60 +96,6 @@ const DEFAULT_ADMIN_LABS: AdminLabApplication[] = [
     submittedAt: 'Yesterday at 02:45 PM',
     status: 'Pending',
   },
-  {
-    id: 'lab-app-3',
-    labName: 'Pacific Marine Synbio Institute',
-    institution: 'UC San Diego',
-    researchDirections: 'Cyanobacterial metabolic engineering, marine biopolymer synthesis, carbon fixation',
-    domain: 'Clean Biomanufacturing',
-    leadPI: 'Dr. Harrison Vance',
-    contactEmail: 'hvance@ucsd.edu',
-    submittedAt: '4 days ago',
-    status: 'Approved',
-  },
-];
-
-const DEFAULT_ADMIN_USERS: AdminUserItem[] = [
-  {
-    id: 'usr-1',
-    name: 'Calista Peng',
-    email: 'calistapeng7@gmail.com',
-    role: 'Creator',
-    registeredAt: 'Sep 02, 2026',
-    status: 'Active',
-  },
-  {
-    id: 'usr-2',
-    name: 'Dr. Aris Thorne',
-    email: 'athorne@stanford.bio.edu',
-    role: 'Researcher',
-    registeredAt: 'Aug 28, 2026',
-    status: 'Active',
-  },
-  {
-    id: 'usr-3',
-    name: 'Elena Rostova',
-    email: 'e.rostova@oxford.ac.uk',
-    role: 'Researcher',
-    registeredAt: 'Aug 22, 2026',
-    status: 'Active',
-  },
-  {
-    id: 'usr-4',
-    name: 'Kenji Sato',
-    email: 'sato@tokyo-biotech.org',
-    role: 'Creator',
-    registeredAt: 'Aug 14, 2026',
-    status: 'Active',
-  },
-  {
-    id: 'usr-5',
-    name: 'System Admin',
-    email: 'admin@synbio.org',
-    role: 'Admin',
-    registeredAt: 'Jan 01, 2026',
-    status: 'Active',
-  },
 ];
 
 export default function AdminDashboardView({
@@ -169,87 +105,246 @@ export default function AdminDashboardView({
 }: AdminDashboardViewProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('ideas');
 
-  // 1. Idea Review State
-  const [ideas, setIdeas] = useState<AdminIdeaItem[]>(() => {
-    try {
-      const stored = localStorage.getItem('synbio_admin_ideas');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error(e);
-    }
-    return DEFAULT_ADMIN_IDEAS;
-  });
+  // 1. Idea Review State - Real-time from Supabase
+  const [ideas, setIdeas] = useState<AdminIdeaItem[]>(DEFAULT_ADMIN_IDEAS);
+  const [isLoadingIdeas, setIsLoadingIdeas] = useState(true);
 
-  useEffect(() => {
+  const fetchIdeas = async () => {
+    setIsLoadingIdeas(true);
     try {
-      localStorage.setItem('synbio_admin_ideas', JSON.stringify(ideas));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [ideas]);
+      const { data, error } = await supabase
+        .from('ideas')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  // 2. Lab Application State
-  const [labApps, setLabApps] = useState<AdminLabApplication[]>(() => {
-    try {
-      const stored = localStorage.getItem('synbio_admin_lab_apps');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error(e);
-    }
-    return DEFAULT_ADMIN_LABS;
-  });
+      if (!error && data && data.length > 0) {
+        const mapped: AdminIdeaItem[] = data.map((item: any) => {
+          let statusText: 'Pending' | 'Approved' | 'Rejected' = 'Pending';
+          if (item.status === 'approved' || item.status === 'Approved' || item.status === 'published') {
+            statusText = 'Approved';
+          } else if (item.status === 'rejected' || item.status === 'Rejected') {
+            statusText = 'Rejected';
+          }
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('synbio_admin_lab_apps', JSON.stringify(labApps));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [labApps]);
-
-  // 3. User Management State
-  const [users, setUsers] = useState<AdminUserItem[]>(() => {
-    try {
-      const registered = localStorage.getItem('synbio_registered_users');
-      if (registered) {
-        const parsed = JSON.parse(registered);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((u: any, idx: number) => ({
-            id: u.id || `usr-${idx}`,
-            name: u.name || 'Unnamed User',
-            email: u.email || '',
-            role:
-              u.email === 'admin@synbio.org' || u.role === 'admin'
-                ? 'Admin'
-                : u.identityTag === 'Academic Researcher'
-                ? 'Researcher'
-                : 'Creator',
-            registeredAt: u.createdAt
-              ? new Date(u.createdAt).toLocaleDateString('en-US', {
+          return {
+            id: item.id?.toString() || `idea-${Math.random()}`,
+            title: item.title,
+            domain: item.domain || 'Synthetic Biology',
+            submitterName: item.author_name || 'Independent Researcher',
+            submitterEmail: item.author_email || undefined,
+            submittedAt: item.created_at
+              ? new Date(item.created_at).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                   year: 'numeric',
                 })
-              : 'Sep 01, 2026',
-            status: 'Active',
-          }));
-        }
+              : 'Recent',
+            status: statusText,
+            description: item.hypothesis || item.description || '',
+          };
+        });
+
+        // Merge with defaults if needed
+        const combined = [...mapped];
+        DEFAULT_ADMIN_IDEAS.forEach((def) => {
+          if (!combined.some((c) => c.title.toLowerCase() === def.title.toLowerCase())) {
+            combined.push(def);
+          }
+        });
+        setIdeas(combined);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.warn('Error fetching ideas for admin:', err);
+    } finally {
+      setIsLoadingIdeas(false);
     }
-    return DEFAULT_ADMIN_USERS;
-  });
+  };
+
+  useEffect(() => {
+    fetchIdeas();
+  }, []);
+
+  // 2. Lab Application State - Real-time from Supabase
+  const [labApps, setLabApps] = useState<AdminLabApplication[]>(DEFAULT_ADMIN_LABS);
+  const [isLoadingLabs, setIsLoadingLabs] = useState(true);
+
+  const fetchLabs = async () => {
+    setIsLoadingLabs(true);
+    try {
+      const { data, error } = await supabase
+        .from('labs')
+        .select('*')
+        .order('joined_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapped: AdminLabApplication[] = data.map((item: any) => {
+          let statusText: 'Pending' | 'Approved' | 'Rejected' = 'Pending';
+          if (item.status === 'approved' || item.status === 'Approved') {
+            statusText = 'Approved';
+          } else if (item.status === 'rejected' || item.status === 'Rejected') {
+            statusText = 'Rejected';
+          }
+
+          const rowId = item.id?.toString() || `lab-${Date.now()}`;
+          return {
+            id: rowId,
+            dbId: rowId,
+            isMock: false,
+            labName: item.name,
+            institution: item.institution || 'Research Institution',
+            domain: item.domain || 'Synthetic Biology',
+            researchDirections: Array.isArray(item.research_directions)
+              ? item.research_directions.join(', ')
+              : item.research_directions || item.domain || 'Frontier Research',
+            leadPI: item.pi_name || 'Principal Investigator',
+            contactEmail: item.contact_email || '',
+            submittedAt: item.joined_at
+              ? new Date(item.joined_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : 'Recent',
+            status: statusText,
+          };
+        });
+
+        const combined = [...mapped];
+        DEFAULT_ADMIN_LABS.forEach((def) => {
+          if (!combined.some((c) => c.labName.toLowerCase() === def.labName.toLowerCase())) {
+            combined.push(def);
+          }
+        });
+        setLabApps(combined);
+      }
+    } catch (err) {
+      console.warn('Error fetching labs for admin:', err);
+    } finally {
+      setIsLoadingLabs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLabs();
+  }, []);
+
+  // 3. User Management State - Loaded directly from Supabase profiles table
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(true);
+
+  const fetchProfiles = async () => {
+    setIsLoadingUsers(true);
+    try {
+      let result = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (result.error) {
+        // Fallback without ordering in case created_at column is not present
+        result = await supabase.from('profiles').select('*');
+      }
+
+      if (result.error) {
+        console.warn('Error querying profiles table in admin:', result.error.message);
+      } else if (result.data) {
+        const mappedUsers: AdminUserItem[] = result.data.map((p: any, idx: number) => {
+          const roleStr = String(p.role || '').toLowerCase();
+          const isAdm = roleStr === 'admin';
+          const displayName =
+            p.display_name ||
+            p.name ||
+            p.full_name ||
+            (isAdm ? 'Admin' : p.email ? p.email.split('@')[0] : 'User');
+
+          let roleDisplay = 'User';
+          if (isAdm) {
+            roleDisplay = 'Admin';
+          } else if (roleStr === 'researcher' || p.identity_tag === 'Academic Researcher') {
+            roleDisplay = 'Researcher';
+          } else if (p.role) {
+            roleDisplay = p.role.charAt(0).toUpperCase() + p.role.slice(1);
+          }
+
+          return {
+            id: p.id || `usr-${idx}`,
+            name: displayName,
+            email: p.email || '',
+            role: roleDisplay,
+            registeredAt: p.created_at
+              ? new Date(p.created_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : 'Recent',
+            status: p.status || 'Active',
+          };
+        });
+        setUsers(mappedUsers);
+      }
+    } catch (err) {
+      console.error('Failed to load profiles from Supabase:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
 
   // Action handlers for Ideas
-  const handleApproveIdea = (id: string) => {
+  const handleApproveIdea = async (id: string) => {
+    const target = ideas.find((i) => i.id === id);
+    const targetDbId = target?.dbId || id;
+    console.log('Calling Supabase update on ideas (approve)...', targetDbId);
+
+    try {
+      const { error } = await supabase
+        .from('ideas')
+        .update({ status: 'approved' })
+        .eq('id', targetDbId);
+
+      if (error) {
+        console.error('Supabase update error on ideas (approve):', error);
+        onToast(`Failed to approve idea: ${error.message || 'Database error'}`);
+        return;
+      }
+    } catch (e: any) {
+      console.error('Error approving idea in Supabase:', e);
+      onToast(`Failed to approve idea: ${e?.message || 'Database error'}`);
+      return;
+    }
+
     setIdeas((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: 'Approved' } : item))
     );
     onToast('Idea approved and published to the frontier index.');
   };
 
-  const handleRejectIdea = (id: string) => {
+  const handleRejectIdea = async (id: string) => {
+    const target = ideas.find((i) => i.id === id);
+    const targetDbId = target?.dbId || id;
+    console.log('Calling Supabase update on ideas (reject)...', targetDbId);
+
+    try {
+      const { error } = await supabase
+        .from('ideas')
+        .update({ status: 'rejected' })
+        .eq('id', targetDbId);
+
+      if (error) {
+        console.error('Supabase update error on ideas (reject):', error);
+        onToast(`Failed to reject idea: ${error.message || 'Database error'}`);
+        return;
+      }
+    } catch (e: any) {
+      console.error('Error rejecting idea in Supabase:', e);
+      onToast(`Failed to reject idea: ${e?.message || 'Database error'}`);
+      return;
+    }
+
     setIdeas((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: 'Rejected' } : item))
     );
@@ -257,17 +352,61 @@ export default function AdminDashboardView({
   };
 
   // Action handlers for Labs
-  const handleApproveLab = (id: string) => {
+  const handleApproveLab = async (id: string) => {
+    const target = labApps.find((l) => l.id === id);
+    const targetDbId = target?.dbId || id;
+    console.log('Calling Supabase update on labs (approve)...', targetDbId);
+
+    try {
+      const { error } = await supabase
+        .from('labs')
+        .update({ status: 'approved' })
+        .eq('id', targetDbId);
+
+      if (error) {
+        console.error('Supabase update error on labs (approve):', error);
+        onToast(`Failed to approve lab: ${error.message || 'Database error'}`);
+        return;
+      }
+    } catch (e: any) {
+      console.error('Error approving lab in Supabase:', e);
+      onToast(`Failed to approve lab: ${e?.message || 'Database error'}`);
+      return;
+    }
+
     setLabApps((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: 'Approved' } : item))
     );
+    window.dispatchEvent(new Event('synbio_labs_updated'));
     onToast('Lab application approved. Onboarding credentials issued.');
   };
 
-  const handleRejectLab = (id: string) => {
+  const handleRejectLab = async (id: string) => {
+    const target = labApps.find((l) => l.id === id);
+    const targetDbId = target?.dbId || id;
+    console.log('Calling Supabase update on labs (reject)...', targetDbId);
+
+    try {
+      const { error } = await supabase
+        .from('labs')
+        .update({ status: 'rejected' })
+        .eq('id', targetDbId);
+
+      if (error) {
+        console.error('Supabase update error on labs (reject):', error);
+        onToast(`Failed to reject lab: ${error.message || 'Database error'}`);
+        return;
+      }
+    } catch (e: any) {
+      console.error('Error rejecting lab in Supabase:', e);
+      onToast(`Failed to reject lab: ${e?.message || 'Database error'}`);
+      return;
+    }
+
     setLabApps((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: 'Rejected' } : item))
     );
+    window.dispatchEvent(new Event('synbio_labs_updated'));
     onToast('Lab onboarding application rejected.');
   };
 
@@ -281,20 +420,11 @@ export default function AdminDashboardView({
         {/* Top Header */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 pb-8 border-b border-white/10">
           <div>
-            <div className="flex items-center gap-2.5 mb-2.5">
-              <span className="px-3 py-1 bg-white/10 text-white rounded-full text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 border border-white/15">
-                <Shield size={13} className="text-amber-400" />
-                <span>Admin Dashboard</span>
-              </span>
-              <span className="text-xs text-neutral-400">
-                Logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.email})
-              </span>
-            </div>
             <h1 className="text-3xl sm:text-4xl font-serif text-white tracking-tight">
-              Admin Management
+              Admin Dashboard
             </h1>
             <p className="text-neutral-400 text-sm mt-1.5 max-w-2xl">
-              Oversee community idea verification, vet partner laboratory applications, and manage platform memberships.
+              Review ideas, vet labs, and manage users.
             </p>
           </div>
 

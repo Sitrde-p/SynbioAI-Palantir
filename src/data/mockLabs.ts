@@ -19,6 +19,8 @@ export interface PastProject {
 
 export interface ResearchLab {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   name: string;
   institution: string;
   institutionLogo?: string;
@@ -41,7 +43,8 @@ export interface ResearchLab {
 
 export const RESEARCH_LABS: ResearchLab[] = [
   {
-    id: 'lab-1',
+    id: 'mock_lab_1',
+    isMock: true,
     name: 'Wyss Bio-Robotics & Synthetic Morphogenesis Group',
     institution: 'Harvard University / Wyss Institute',
     domain: 'Synthetic Biology',
@@ -110,7 +113,8 @@ export const RESEARCH_LABS: ResearchLab[] = [
     badge: 'Tier-1 Partner',
   },
   {
-    id: 'lab-2',
+    id: 'mock_lab_2',
+    isMock: true,
     name: 'Broad Institute Center for Cell Circuitry & Genomic Design',
     institution: 'Broad Institute of MIT and Harvard',
     domain: 'AI & Computing',
@@ -173,7 +177,8 @@ export const RESEARCH_LABS: ResearchLab[] = [
     badge: 'Verified AI Lab',
   },
   {
-    id: 'lab-3',
+    id: 'mock_lab_3',
+    isMock: true,
     name: 'ETH Zurich Laboratory of Applied Mechanobiology',
     institution: 'ETH Zurich',
     domain: 'Biomedicine',
@@ -229,7 +234,8 @@ export const RESEARCH_LABS: ResearchLab[] = [
     contactEmail: 'mechanobio@hest.ethz.ch',
   },
   {
-    id: 'lab-4',
+    id: 'mock_lab_4',
+    isMock: true,
     name: 'Stanford Synthetic Neuroscience & Opto-Proteomics Lab',
     institution: 'Stanford University',
     domain: 'Neurotech',
@@ -286,7 +292,8 @@ export const RESEARCH_LABS: ResearchLab[] = [
     badge: 'Premier Center',
   },
   {
-    id: 'lab-5',
+    id: 'mock_lab_5',
+    isMock: true,
     name: 'Synthetic Microbial Ecology & Circular Biomanufacturing',
     institution: 'Technical University of Denmark (DTU Biosustain)',
     domain: 'Clean Biomanufacturing',
@@ -342,7 +349,8 @@ export const RESEARCH_LABS: ResearchLab[] = [
     contactEmail: 'nielsen.biomanufacturing@biosustain.dtu.dk',
   },
   {
-    id: 'lab-6',
+    id: 'mock_lab_6',
+    isMock: true,
     name: 'Cambridge Molecular Biocomputing & DNA Data Storage Lab',
     institution: 'University of Cambridge',
     domain: 'AI & Computing',

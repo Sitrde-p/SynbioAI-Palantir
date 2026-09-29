@@ -7,7 +7,8 @@ import { ImaginationNote } from '../types';
 
 export const INITIAL_NOTES: ImaginationNote[] = [
   {
-    id: '1',
+    id: 'mock_1',
+    isMock: true,
     title: 'Self-Assembling Synaptic Regeneration Scaffolds for Axonal Guidance',
     domain: 'Biomedicine',
     description: 'Biomimetic extracellular matrix designed via synthetic biopolymers to emulate brain nanoscale topology and induce directional axonal sprouting across spinal lesions.',
@@ -54,7 +55,8 @@ Long-range directional axonal growth was validated on in vitro neuro-chips, demo
     ]
   },
   {
-    id: '2',
+    id: 'mock_2',
+    isMock: true,
     title: 'Generative Diffusion-Driven De Novo Allosteric Enzyme Design',
     domain: 'AI & Computing',
     description: 'Combining all-atom diffusion models with constrained molecular dynamics to generate non-natural allosteric regulatory pockets for high-precision metabolic pathway switching.',
@@ -93,7 +95,8 @@ We have designed allosteric biocatalysts that remain completely inert to trace m
     ]
   },
   {
-    id: '3',
+    id: 'mock_3',
+    isMock: true,
     title: 'Self-Sustaining Bioluminescent Street Canopies & Circadian Gene Circuits',
     domain: 'Synthetic Biology',
     description: 'Engineering deep-sea luciferase operons into angiosperm chloroplast genomes, harnessing photosynthetic ATP to generate ambient night glow without external chemical substrates.',
@@ -129,7 +132,8 @@ Municipal street lighting accounts for more than 18% of global municipal electri
     ]
   },
   {
-    id: '4',
+    id: 'mock_4',
+    isMock: true,
     title: 'High-Density DNA Living Chromosome Storage & In-Cell Error Correction',
     domain: 'Synthetic Biology',
     description: 'Employing unnatural base pairs (dNaM-d5SICS) to synthesize artificial micro-chromosomes, capable of storing 215 PB per gram with autonomous cellular error-correction.',
@@ -156,7 +160,8 @@ Global digital data generation is surging exponentially, while magnetic tape and
     commentsList: []
   },
   {
-    id: '5',
+    id: 'mock_5',
+    isMock: true,
     title: 'Neuromorphic Melanin Conductive Microfibers for Non-Invasive BCI',
     domain: 'Neurotech',
     description: 'Synthesizing biocompatible polymeric melanin microfibers via engineered E. coli fermentation, eliminating immune rejection for ultralow-noise chronic neural telemetry.',
@@ -183,7 +188,8 @@ Conventional metal and silicon brain-computer interface electrodes trigger prono
     commentsList: []
   },
   {
-    id: '6',
+    id: 'mock_6',
+    isMock: true,
     title: 'Carbon-Negative Mycelium Structural Units & Self-Healing Living Concrete',
     domain: 'Clean Biomanufacturing',
     description: 'Engineering fungal mycelium seeded with carbonic anhydrase-expressing cyanobacteria on agricultural straw, mineralizing atmospheric CO2 into structural living masonry.',
@@ -210,7 +216,8 @@ Traditional Portland cement accounts for approximately 8% of total anthropogenic
     commentsList: []
   },
   {
-    id: '7',
+    id: 'mock_7',
+    isMock: true,
     title: 'Universal CAR-NK Immunotherapy via Exosomal Glycan Remodeling',
     domain: 'Biomedicine',
     description: 'A chemo-enzymatic platform reshaping natural killer cell glycocalyx coats without viral transfection, conferring HLA-independent infiltration into solid tumor stroma.',
@@ -236,7 +243,8 @@ Autologous CAR-T therapies require protracted 3-4 week manufacturing cycles, inc
     commentsList: []
   },
   {
-    id: '8',
+    id: 'mock_8',
+    isMock: true,
     title: 'Autonomous Microfluidic Droplet Assembler & Robotic Cloning Foundry',
     domain: 'AI & Computing',
     description: 'Integrating multi-phase microfluidics with reinforcement learning decision trees to compress conventional DNA cloning from 3 days to 45 minutes enzyme-free.',
@@ -262,7 +270,8 @@ Molecular cloning and plasmid assembly represent a major manual bottleneck acros
     commentsList: []
   },
   {
-    id: '9',
+    id: 'mock_9',
+    isMock: true,
     title: 'Radiotolerant Cyanobacterial Photoautotrophs for Martian Biomanufacturing',
     domain: 'Synthetic Biology',
     description: 'Directed evolution incorporating tardigrade Dsup damage-suppressor proteins into Synechococcus, synthesizing bioplastics and carbohydrates under sub-baric CO2.',
@@ -288,7 +297,8 @@ Interplanetary exploration cannot rely entirely on resupply from Earth. This pro
     commentsList: []
   },
   {
-    id: '10',
+    id: 'mock_10',
+    isMock: true,
     title: 'Synthetic Epigenetic Reset Circuits for Reversing Cardiomyocyte Senescence',
     domain: 'Biomedicine',
     description: 'Transient OSKM delivery via cardiac-tropic lipid nanoparticles to reverse epigenetic aging drift and fibrotic remodeling in post-infarction ischemic cardiac tissue.',

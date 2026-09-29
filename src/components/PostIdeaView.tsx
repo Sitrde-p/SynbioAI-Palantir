@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -15,6 +15,8 @@ import {
   HelpCircle,
   CheckCircle2,
   Atom,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import { DomainCategory, UserAccount } from '../types';
 
@@ -28,6 +30,7 @@ interface PostIdeaViewProps {
     location: string;
     tags: string;
     description: string;
+    image?: string;
   }) => void;
   onRequireAuth?: () => void;
 }
@@ -53,9 +56,43 @@ export default function PostIdeaView({
   );
   const [location, setLocation] = useState('');
   const [tags, setTags] = useState('');
+  const [diagramPreview, setDiagramPreview] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Please upload a valid image file (PNG, JPG, SVG, WebP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg('Image size exceeds 5MB limit.');
+      return;
+    }
+    setErrorMsg('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setDiagramPreview(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleImageUpload(e.target.files[0]);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleImageUpload(e.dataTransfer.files[0]);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +116,7 @@ export default function PostIdeaView({
         location: location.trim() || 'Global Scientific Network',
         tags: tags.trim(),
         description: description.trim(),
+        image: diagramPreview || undefined,
       });
       setIsSubmitting(false);
     }, 400);
@@ -222,7 +260,65 @@ export default function PostIdeaView({
             </p>
           </div>
 
-          {/* 5. Scientific Hypothesis & Breakthrough Vision */}
+          {/* 5. Supporting Graph / Diagram */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-neutral-200 flex items-center gap-1.5">
+              <ImageIcon size={14} className="text-neutral-400" />
+              <span>Supporting Graph / Diagram (Assist you illuminate your idea)</span>
+            </label>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              className="relative group border border-dashed border-white/15 hover:border-white/30 bg-[#141417] hover:bg-[#18181c] rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              {diagramPreview ? (
+                <div className="relative w-full flex flex-col items-center">
+                  <img
+                    src={diagramPreview}
+                    alt="Diagram preview"
+                    className="max-h-52 rounded-xl object-contain border border-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDiagramPreview(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="mt-3 px-3 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-xs rounded-xl transition-all flex items-center gap-1.5"
+                  >
+                    <X size={13} />
+                    <span>Remove Diagram</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-400 group-hover:text-white group-hover:scale-105 transition-all mb-3">
+                    <ImageIcon size={22} />
+                  </div>
+                  <span className="text-sm font-medium text-neutral-200">
+                    Click to upload graph or diagram
+                  </span>
+                  <span className="text-xs text-neutral-500 mt-1">
+                    PNG, JPG, SVG up to 5MB
+                  </span>
+                </>
+              )}
+            </div>
+            <p className="text-[11px] text-neutral-500">
+              Optional supporting graph, mechanism diagram or experimental schematic.
+            </p>
+          </div>
+
+          {/* 6. Scientific Hypothesis & Breakthrough Vision */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-neutral-200">
               Scientific Hypothesis & Anticipated Breakthrough <span className="text-rose-400">*</span>

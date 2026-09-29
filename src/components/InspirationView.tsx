@@ -126,7 +126,7 @@ export default function InspirationView({
             Inspiration Square
           </h1>
           <p className="text-neutral-400 text-sm sm:text-base max-w-2xl mt-2 leading-relaxed">
-            Explore the most inspiring ideas from the Square.
+            Explore the most inspiring ideas from the square.
           </p>
         </div>
 

@@ -21,6 +21,8 @@ export type DomainCategory =
 
 export interface ImaginationNote {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   title: string;
   domain: DomainCategory;
   author: {
@@ -67,21 +69,16 @@ export interface UserAccount {
 
 export const isUserAdmin = (user: UserAccount | null | undefined): boolean => {
   if (!user) return false;
-  if (user.role === 'admin') return true;
-  const envAdmin = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_ADMIN_EMAIL)
-    ? String((import.meta as any).env.VITE_ADMIN_EMAIL).toLowerCase().trim()
-    : 'admin@synbio.org';
-  const userEmail = (user.email || '').toLowerCase().trim();
-  return (
-    userEmail === envAdmin ||
-    userEmail === 'admin@synbio.org'
-  );
+  const role = (user.role || '').toLowerCase().trim();
+  return role === 'admin';
 };
 
 export type IdeaReviewStatus = 'Pending' | 'Approved' | 'Rejected';
 
 export interface AdminIdeaItem {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   title: string;
   submitterName: string;
   submitterEmail?: string;
@@ -95,6 +92,8 @@ export type LabApplicationStatus = 'Pending' | 'Approved' | 'Rejected';
 
 export interface AdminLabApplication {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   labName: string;
   institution: string;
   researchDirections: string;
@@ -109,9 +108,9 @@ export interface AdminUserItem {
   id: string;
   name: string;
   email: string;
-  role: 'Creator' | 'Researcher' | 'Admin';
+  role: 'Creator' | 'Researcher' | 'Admin' | string;
   registeredAt: string;
-  status: 'Active' | 'Pending';
+  status: 'Active' | 'Pending' | string;
 }
 
 export interface LabMatchRequest {
@@ -132,6 +131,8 @@ export type InterestStatus = 'Pending' | 'In Discussion' | 'Accepted' | 'Rejecte
 
 export interface UserInterest {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   labId: string;
   labName: string;
   institution: string;
@@ -163,6 +164,8 @@ export interface CommunityReply {
 
 export interface CommunityPost {
   id: string;
+  dbId?: string;
+  isMock?: boolean;
   section: CommunitySection;
   title: string;
   content: string;
@@ -173,6 +176,7 @@ export interface CommunityPost {
     avatar?: string;
   };
   authorEmail?: string;
+  authorId?: string;
   tags: string[];
   likes: number;
   isLiked?: boolean;

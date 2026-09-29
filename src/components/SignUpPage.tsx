@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { UserAccount } from '../types';
+import { supabase } from '../supabase';
 
 interface SignUpPageProps {
   onSignUpSuccess: (user: UserAccount) => void;
@@ -27,7 +28,7 @@ export default function SignUpPage({
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -50,75 +51,86 @@ export default function SignUpPage({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      // Save new user to localStorage
-      let users: (UserAccount & { password?: string })[] = [];
-      try {
-        const storedUsers = localStorage.getItem('synbio_registered_users');
-        if (storedUsers) {
-          users = JSON.parse(storedUsers);
-        }
-      } catch (err) {
-        console.error(err);
-      }
+    try {
+      const role = 'creator';
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim();
 
-      const existingUser = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-      if (existingUser) {
-        setError('An account with this email already exists. Please sign in instead.');
+      // 1. Sign up with Supabase Auth
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password: password,
+        options: {
+          data: {
+            display_name: trimmedName,
+            name: trimmedName,
+            full_name: trimmedName,
+            role: role,
+          },
+        },
+      });
+
+      if (authError) {
         setIsLoading(false);
+        setError(authError.message || 'Failed to create account.');
         return;
       }
 
-      const newUser: UserAccount = {
-        id: `user_${Date.now()}`,
-        name: name.trim(),
-        email: email.trim(),
-        createdAt: new Date().toISOString(),
-        bio: 'Synthetic biology researcher exploring computational design and bio-manufacturing interfaces.',
-        affiliation: 'Independent Research Fellow',
-        identityTag: 'Principal Investigator',
-        notifications: {
-          emailUpdates: true,
-          labMatches: true,
-          collaborationRequests: true,
-          weeklyDigest: false,
-        },
-      };
+      if (data?.user) {
+        const userId = data.user.id;
+        const userEmail = data.user.email || trimmedEmail;
 
-      const updatedUsers = [...users, { ...newUser, password }];
-      localStorage.setItem('synbio_registered_users', JSON.stringify(updatedUsers));
-      localStorage.setItem('synbio_current_user', JSON.stringify(newUser));
+        // 2. Upsert initial profile into profiles table with display_name and empty bio/affiliation
+        try {
+          await supabase.from('profiles').upsert({
+            id: userId,
+            display_name: trimmedName,
+            name: trimmedName,
+            full_name: trimmedName,
+            email: userEmail,
+            role: role,
+            bio: '',
+            affiliation: '',
+            identity_tag: 'Creator',
+            created_at: new Date().toISOString(),
+          });
+        } catch (profErr) {
+          console.warn('Profiles table sync notice:', profErr);
+        }
+
+        const newUser: UserAccount = {
+          id: userId,
+          name: trimmedName,
+          email: userEmail,
+          role: role,
+          createdAt: data.user.created_at || new Date().toISOString(),
+          bio: '',
+          affiliation: '',
+          identityTag: 'Creator',
+          notifications: {
+            emailUpdates: true,
+            labMatches: true,
+            collaborationRequests: true,
+            weeklyDigest: false,
+          },
+        };
+
+        localStorage.setItem('synbio_current_user', JSON.stringify(newUser));
+        setIsLoading(false);
+        onSignUpSuccess(newUser);
+        return;
+      }
 
       setIsLoading(false);
-      onSignUpSuccess(newUser);
-    }, 400);
+      setError('Registration submitted. Please check your email to verify your account or sign in.');
+    } catch (err: any) {
+      setIsLoading(false);
+      setError(err?.message || 'An unexpected error occurred during sign up.');
+    }
   };
 
   const handleGoogleSignUp = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      const googleUser: UserAccount = {
-        id: 'user_google_calista',
-        name: name.trim() || 'Calista Peng',
-        email: email.trim() || 'calistapeng7@gmail.com',
-        createdAt: new Date().toISOString(),
-      };
-
-      try {
-        const storedUsers = localStorage.getItem('synbio_registered_users');
-        const users = storedUsers ? JSON.parse(storedUsers) : [];
-        if (!users.some((u: any) => u.email === googleUser.email)) {
-          users.push(googleUser);
-          localStorage.setItem('synbio_registered_users', JSON.stringify(users));
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      localStorage.setItem('synbio_current_user', JSON.stringify(googleUser));
-      setIsLoading(false);
-      onSignUpSuccess(googleUser);
-    }, 400);
+    setError('Google sign-in is coming soon.');
   };
 
   return (

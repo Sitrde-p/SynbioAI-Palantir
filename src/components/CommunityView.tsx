@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare,
@@ -23,15 +23,23 @@ import {
   Check,
 } from 'lucide-react';
 import { UserAccount, CommunitySection, CommunityPost, CommunityReply } from '../types';
+import { supabase } from '../supabase';
 
 interface CommunityViewProps {
   currentUser?: UserAccount | null;
   onRequireAuth?: () => void;
+  initialOpenNewPost?: boolean;
+  onResetInitialOpenNewPost?: () => void;
+  initialEditingPost?: CommunityPost | null;
+  onResetInitialEditingPost?: () => void;
+  initialViewingPostId?: string | null;
+  onResetInitialViewingPostId?: () => void;
 }
 
-const INITIAL_POSTS: CommunityPost[] = [
+const MOCK_POSTS: CommunityPost[] = [
   {
-    id: 'comm-post-1',
+    id: 'mock_post_1',
+    isMock: true,
     section: 'Discussion',
     title: 'Will continuous microfluidic cell-free protein synthesis replace traditional bioreactors for rapid antibody screening?',
     content:
@@ -62,11 +70,11 @@ const INITIAL_POSTS: CommunityPost[] = [
       {
         id: 'reply-1-2',
         author: {
-          name: 'Calista Peng',
+          name: 'Dr. Clara Patel',
           role: 'Postdoctoral Researcher',
           institution: 'Stanford Bio-X',
         },
-        authorEmail: 'calista.peng@stanford.edu',
+        authorEmail: 'clara.patel@stanford.edu',
         content:
           'We saw similar benefits when coupling micro-perfusion with automated capillary electrophoresis. Post-translational modifications (specifically high-mannose glycosylation) still require tailored chaperone co-expression however.',
         createdAt: '1 hour ago',
@@ -76,7 +84,8 @@ const INITIAL_POSTS: CommunityPost[] = [
     statusBadge: 'Hot Topic',
   },
   {
-    id: 'comm-post-2',
+    id: 'mock_post_2',
+    isMock: true,
     section: 'Discussion',
     title: 'How do you mitigate non-specific cell adhesion in PDMS microchannels without altering laminar shear velocity?',
     content:
@@ -109,7 +118,8 @@ const INITIAL_POSTS: CommunityPost[] = [
     statusBadge: 'Answered',
   },
   {
-    id: 'comm-post-3',
+    id: 'mock_post_3',
+    isMock: true,
     section: 'Discussion',
     title: 'Idea Sketch: CRISPR-Cas12a coupled to graphene field-effect transistors for real-time viral capsid telemetry in saliva',
     content:
@@ -142,7 +152,8 @@ const INITIAL_POSTS: CommunityPost[] = [
     statusBadge: 'Seeking Feedback',
   },
   {
-    id: 'comm-post-4',
+    id: 'mock_post_4',
+    isMock: true,
     section: 'Seeking',
     title: '[Recruitment] Looking for a computational structural biologist experienced with RFdiffusion for our DNA origami nano-cage project',
     content:
@@ -175,7 +186,8 @@ const INITIAL_POSTS: CommunityPost[] = [
     statusBadge: 'Seeking Partners',
   },
   {
-    id: 'comm-post-5',
+    id: 'mock_post_5',
+    isMock: true,
     section: 'Discussion',
     title: 'Standardizing metabolic flux metadata: Should we enforce open JSON-LD schemas across dry-lab and wet-lab handoffs?',
     content:
@@ -203,32 +215,98 @@ export const normalizeSection = (section?: string): CommunitySection => {
   return 'Discussion';
 };
 
-export default function CommunityView({ currentUser, onRequireAuth }: CommunityViewProps) {
-  const [posts, setPosts] = useState<CommunityPost[]>(() => {
+export default function CommunityView({
+  currentUser,
+  onRequireAuth,
+  initialOpenNewPost,
+  onResetInitialOpenNewPost,
+  initialEditingPost,
+  onResetInitialEditingPost,
+  initialViewingPostId,
+  onResetInitialViewingPostId,
+}: CommunityViewProps) {
+  // Mock posts state
+  const [mockPosts, setMockPosts] = useState<CommunityPost[]>(() => {
     try {
-      const stored = localStorage.getItem('synbio_community_posts');
+      const stored = localStorage.getItem('synbio_mock_community_posts');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned: CommunityPost[] = parsed.map((p: any) => ({
-            ...p,
-            section: normalizeSection(p.section),
-            statusBadge:
-              p.statusBadge === 'Open for Collab'
-                ? 'Seeking Partners'
-                : p.statusBadge,
-          }));
-          try {
-            localStorage.setItem('synbio_community_posts', JSON.stringify(cleaned));
-          } catch {}
-          return cleaned;
+          return parsed;
         }
       }
     } catch (e) {
       console.error(e);
     }
-    return INITIAL_POSTS;
+    return MOCK_POSTS;
   });
+
+  // Real posts state from Supabase
+  const [realPosts, setRealPosts] = useState<CommunityPost[]>([]);
+
+  // Combined posts: Real data in front, Mock data in back
+  const posts = React.useMemo(() => [...realPosts, ...mockPosts], [realPosts, mockPosts]);
+
+  // Load posts from Supabase posts table
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          const mapped: CommunityPost[] = data.map((item: any) => {
+            const rowId = item.id?.toString() || `post-${Date.now()}`;
+            return {
+              id: rowId,
+              dbId: rowId,
+              isMock: false,
+              section: normalizeSection(item.post_type || 'Discussion'),
+              title: item.title,
+              content: item.content,
+              author: {
+                name: 'Verified Investigator',
+                role: 'Researcher',
+                institution: 'Bioengineering Research Network',
+              },
+              authorEmail: undefined,
+              authorId: item.author_id,
+              tags: Array.isArray(item.tags)
+                ? item.tags
+                : item.tags
+                ? item.tags.split(',')
+                : ['Synthetic Biology'],
+              likes: 1,
+              isLiked: false,
+              repliesCount: Array.isArray(item.replies) ? item.replies.length : 0,
+              replies: Array.isArray(item.replies) ? item.replies : [],
+              createdAt: item.created_at
+                ? new Date(item.created_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : 'Recent',
+              statusBadge: item.post_type === 'Seeking' ? 'Seeking Partners' : 'Discussion',
+            };
+          });
+          setRealPosts(mapped);
+        }
+      } catch (err) {
+        console.warn('Could not fetch posts from Supabase:', err);
+      }
+    };
+    fetchPosts();
+  }, []);
+
+  // Save mock posts to storage
+  useEffect(() => {
+    try {
+      localStorage.setItem('synbio_mock_community_posts', JSON.stringify(mockPosts));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [mockPosts]);
 
   const [activeSection, setActiveSection] = useState<'All' | CommunitySection>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,7 +314,7 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
 
   // Expanded replies state for each post
   const [expandedPostIds, setExpandedPostIds] = useState<Record<string, boolean>>({
-    'comm-post-1': true,
+    'mock_post_1': true,
   });
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
 
@@ -261,23 +339,76 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync with localStorage
-  const savePostsToStorage = (updated: CommunityPost[]) => {
-    setPosts(updated);
-    try {
-      localStorage.setItem('synbio_community_posts', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
+  useEffect(() => {
+    if (initialOpenNewPost) {
+      if (!currentUser) {
+        if (onRequireAuth) onRequireAuth();
+      } else {
+        setIsNewPostModalOpen(true);
+      }
+      if (onResetInitialOpenNewPost) {
+        onResetInitialOpenNewPost();
+      }
     }
-  };
+  }, [initialOpenNewPost, currentUser, onRequireAuth, onResetInitialOpenNewPost]);
+
+  useEffect(() => {
+    if (initialEditingPost) {
+      setEditingPost(initialEditingPost);
+      setEditTitle(initialEditingPost.title);
+      setEditContent(initialEditingPost.content);
+      setEditSection(normalizeSection(initialEditingPost.section));
+      setEditTags(
+        Array.isArray(initialEditingPost.tags)
+          ? initialEditingPost.tags.join(', ')
+          : initialEditingPost.tags || ''
+      );
+      if (onResetInitialEditingPost) {
+        onResetInitialEditingPost();
+      }
+    }
+  }, [initialEditingPost, onResetInitialEditingPost]);
+
+  useEffect(() => {
+    if (initialViewingPostId) {
+      const targetId = String(initialViewingPostId);
+      setExpandedPostIds((prev) => ({ ...prev, [targetId]: true }));
+      setActiveSection('All');
+      setSelectedTag(null);
+      setSearchQuery('');
+      setTimeout(() => {
+        const el =
+          document.getElementById(`post-${targetId}`) ||
+          document.querySelector(`[data-post-id="${targetId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-white/50');
+          setTimeout(() => {
+            el.classList.remove('ring-2', 'ring-white/50');
+          }, 2500);
+        }
+      }, 200);
+      if (onResetInitialViewingPostId) {
+        onResetInitialViewingPostId();
+      }
+    }
+  }, [initialViewingPostId, onResetInitialViewingPostId]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const isAuthor = (authorEmail?: string, authorName?: string) => {
+  const updatePostItem = (postId: string, updater: (p: CommunityPost) => CommunityPost) => {
+    setRealPosts((prev) => prev.map((p) => (p.id === postId ? updater(p) : p)));
+    setMockPosts((prev) => prev.map((p) => (p.id === postId ? updater(p) : p)));
+  };
+
+  const isAuthor = (authorEmail?: string, authorName?: string, authorId?: string) => {
     if (!currentUser) return false;
+    if (authorId && currentUser.id && authorId === currentUser.id) {
+      return true;
+    }
     if (authorEmail && currentUser.email && authorEmail.toLowerCase() === currentUser.email.toLowerCase()) {
       return true;
     }
@@ -298,18 +429,14 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
   };
 
   const handleToggleLike = (postId: string) => {
-    const updated = posts.map((post) => {
-      if (post.id === postId) {
-        const nextLiked = !post.isLiked;
-        return {
-          ...post,
-          isLiked: nextLiked,
-          likes: nextLiked ? post.likes + 1 : Math.max(0, post.likes - 1),
-        };
-      }
-      return post;
+    updatePostItem(postId, (post) => {
+      const nextLiked = !post.isLiked;
+      return {
+        ...post,
+        isLiked: nextLiked,
+        likes: nextLiked ? post.likes + 1 : Math.max(0, post.likes - 1),
+      };
     });
-    savePostsToStorage(updated);
   };
 
   const handleToggleReplies = (postId: string) => {
@@ -340,37 +467,30 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
       createdAt: 'Just now',
     };
 
-    const updated = posts.map((post) => {
-      if (post.id === postId) {
-        const replies = post.replies ? [...post.replies, newReply] : [newReply];
-        return {
-          ...post,
-          replies,
-          repliesCount: replies.length,
-        };
-      }
-      return post;
+    updatePostItem(postId, (post) => {
+      const replies = post.replies ? [...post.replies, newReply] : [newReply];
+      return {
+        ...post,
+        replies,
+        repliesCount: replies.length,
+      };
     });
 
-    savePostsToStorage(updated);
     setReplyInputs((prev) => ({ ...prev, [postId]: '' }));
     setExpandedPostIds((prev) => ({ ...prev, [postId]: true }));
     showToast('Reply posted to discussion');
   };
 
   const handleDeleteReply = (postId: string, replyId: string) => {
-    const updated = posts.map((post) => {
-      if (post.id === postId && post.replies) {
-        const filteredReplies = post.replies.filter((r) => r.id !== replyId);
-        return {
-          ...post,
-          replies: filteredReplies,
-          repliesCount: filteredReplies.length,
-        };
-      }
-      return post;
+    updatePostItem(postId, (post) => {
+      if (!post.replies) return post;
+      const filteredReplies = post.replies.filter((r) => r.id !== replyId);
+      return {
+        ...post,
+        replies: filteredReplies,
+        repliesCount: filteredReplies.length,
+      };
     });
-    savePostsToStorage(updated);
     showToast('Reply deleted');
   };
 
@@ -382,28 +502,51 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
   const handleSaveEditReply = (postId: string, replyId: string) => {
     if (!editReplyContent.trim()) return;
 
-    const updated = posts.map((post) => {
-      if (post.id === postId && post.replies) {
-        const updatedReplies = post.replies.map((r) =>
-          r.id === replyId ? { ...r, content: editReplyContent.trim() } : r
-        );
-        return {
-          ...post,
-          replies: updatedReplies,
-        };
-      }
-      return post;
+    updatePostItem(postId, (post) => {
+      if (!post.replies) return post;
+      const updatedReplies = post.replies.map((r) =>
+        r.id === replyId ? { ...r, content: editReplyContent.trim() } : r
+      );
+      return {
+        ...post,
+        replies: updatedReplies,
+      };
     });
 
-    savePostsToStorage(updated);
     setEditingReplyKey(null);
     setEditReplyContent('');
     showToast('Reply updated');
   };
 
-  const handleDeletePost = (postId: string) => {
-    const updated = posts.filter((p) => p.id !== postId);
-    savePostsToStorage(updated);
+  const handleDeletePost = async (postId: string) => {
+    const target = posts.find((p) => p.id === postId);
+    if (!target) return;
+    const isMock = !!target.isMock || !target.dbId || String(postId).startsWith('mock_');
+
+    if (isMock) {
+      setMockPosts((prev) => prev.filter((p) => p.id !== postId));
+      showToast('示例数据已从当前视图隐藏（刷新页面将重新出现，属正常现象）');
+      return;
+    }
+
+    const targetDbId = target.dbId || postId;
+    console.log('Calling Supabase delete on posts...', targetDbId);
+
+    try {
+      const { error } = await supabase.from('posts').delete().eq('id', targetDbId);
+      if (error) {
+        console.error('Supabase delete error on posts:', error);
+        showToast(`Failed to delete post: ${error.message || 'Database error'}`);
+        return;
+      }
+    } catch (err: any) {
+      console.error('Error deleting post from Supabase:', err);
+      showToast(`Failed to delete post: ${err?.message || 'Database error'}`);
+      return;
+    }
+
+    setRealPosts((prev) => prev.filter((p) => p.id !== postId && p.dbId !== postId));
+    window.dispatchEvent(new Event('synbio_posts_updated'));
     showToast('Post deleted');
   };
 
@@ -415,35 +558,58 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
     setEditTags(post.tags.join(', '));
   };
 
-  const handleSaveEditPost = (e: React.FormEvent) => {
+  const handleSaveEditPost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPost || !editTitle.trim() || !editContent.trim()) return;
 
     const tagsArray = editTags
-      .split(',')
+      .split(/[,，\s]+/)
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const updated = posts.map((p) => {
-      if (p.id === editingPost.id) {
-        return {
-          ...p,
-          title: editTitle.trim(),
-          content: editContent.trim(),
-          section: editSection,
-          tags: tagsArray.length > 0 ? tagsArray : p.tags,
-          statusBadge: editSection === 'Seeking' ? 'Seeking Partners' : 'Discussion',
-        };
-      }
-      return p;
-    });
+    const isMock = !!editingPost.isMock || !editingPost.dbId || String(editingPost.id).startsWith('mock_');
 
-    savePostsToStorage(updated);
+    if (!isMock) {
+      const targetDbId = editingPost.dbId || editingPost.id;
+      console.log('Calling Supabase update on posts...', targetDbId);
+      try {
+        const { error } = await supabase
+          .from('posts')
+          .update({
+            title: editTitle.trim(),
+            content: editContent.trim(),
+            tags: tagsArray.length > 0 ? tagsArray : editingPost.tags,
+            post_type: editSection,
+          })
+          .eq('id', targetDbId);
+
+        if (error) {
+          console.error('Supabase update error on posts:', error);
+          showToast(`Failed to update post: ${error.message || 'Database error'}`);
+          return;
+        }
+      } catch (err: any) {
+        console.error('Error updating post in Supabase:', err);
+        showToast(`Failed to update post: ${err?.message || 'Database error'}`);
+        return;
+      }
+    }
+
+    updatePostItem(editingPost.id, (p) => ({
+      ...p,
+      title: editTitle.trim(),
+      content: editContent.trim(),
+      section: editSection,
+      tags: tagsArray.length > 0 ? tagsArray : p.tags,
+      statusBadge: editSection === 'Seeking' ? 'Seeking Partners' : 'Discussion',
+    }));
+
     setEditingPost(null);
+    window.dispatchEvent(new Event('synbio_posts_updated'));
     showToast('Post updated successfully');
   };
 
-  const handleSubmitNewPost = (e: React.FormEvent) => {
+  const handleSubmitNewPost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostTitle.trim() || !newPostContent.trim()) return;
 
@@ -454,28 +620,55 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const createdPost: CommunityPost = {
-      id: 'comm-post-' + Date.now(),
-      section: newPostSection,
-      title: newPostTitle.trim(),
-      content: newPostContent.trim(),
-      author: {
-        name: currentUser?.name || 'Dr. Researcher',
-        role: currentUser?.identityTag || 'Investigator',
-        institution: currentUser?.affiliation || 'Department of Bioengineering',
-      },
-      authorEmail: currentUser?.email,
-      tags: tagsArray.length > 0 ? tagsArray : ['Synthetic Biology', 'Research'],
-      likes: 1,
-      isLiked: true,
-      repliesCount: 0,
-      replies: [],
-      createdAt: 'Just now',
-      statusBadge: newPostSection === 'Seeking' ? 'Seeking Partners' : 'Discussion',
-    };
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          post_type: newPostSection,
+          title: newPostTitle.trim(),
+          content: newPostContent.trim(),
+          tags: tagsArray.length > 0 ? tagsArray : ['Synthetic Biology', 'Research'],
+          author_id: currentUser?.id || null,
+        })
+        .select();
 
-    const nextPosts = [createdPost, ...posts];
-    savePostsToStorage(nextPosts);
+      if (error) {
+        console.warn('Could not insert to Supabase posts table:', error);
+        showToast(`Error creating post: ${error.message || 'Database error'}`);
+      } else {
+        const row = data && data[0];
+        const realId = row ? row.id.toString() : `post_${Date.now()}`;
+        const createdPost: CommunityPost = {
+          id: realId,
+          dbId: realId,
+          isMock: false,
+          section: newPostSection,
+          title: newPostTitle.trim(),
+          content: newPostContent.trim(),
+          author: {
+            name: currentUser?.name || 'Dr. Researcher',
+            role: currentUser?.identityTag || 'Investigator',
+            institution: currentUser?.affiliation || 'Department of Bioengineering',
+          },
+          authorEmail: currentUser?.email,
+          authorId: currentUser?.id,
+          tags: tagsArray.length > 0 ? tagsArray : ['Synthetic Biology', 'Research'],
+          likes: 1,
+          isLiked: true,
+          repliesCount: 0,
+          replies: [],
+          createdAt: 'Just now',
+          statusBadge: newPostSection === 'Seeking' ? 'Seeking Partners' : 'Discussion',
+        };
+
+        setRealPosts((prev) => [createdPost, ...prev]);
+        window.dispatchEvent(new Event('synbio_posts_updated'));
+        showToast('Your post has been shared with the community');
+      }
+    } catch (err: any) {
+      console.warn('Could not insert to Supabase posts table:', err);
+      showToast(`Error creating post: ${err?.message || 'Database error'}`);
+    }
 
     // Reset form
     setNewPostTitle('');
@@ -483,7 +676,6 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
     setNewPostTags('');
     setIsSubmittingPost(false);
     setIsNewPostModalOpen(false);
-    showToast('Your post has been shared with the community');
   };
 
   // Filtered posts
@@ -681,11 +873,13 @@ export default function CommunityView({ currentUser, onRequireAuth }: CommunityV
           filteredPosts.map((post) => {
             const isExpanded = expandedPostIds[post.id] ?? false;
             const replies = post.replies || [];
-            const userOwnsPost = isAuthor(post.authorEmail, post.author.name);
+            const userOwnsPost = isAuthor(post.authorEmail, post.author.name, post.authorId);
 
             return (
               <article
                 key={post.id}
+                id={`post-${post.id}`}
+                data-post-id={post.id}
                 className="p-6 sm:p-8 rounded-3xl bg-[#0c0c0f] border border-white/10 hover:border-white/20 transition-all space-y-5"
               >
                 {/* Post Top Metadata */}

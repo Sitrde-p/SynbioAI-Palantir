@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { UserAccount } from '../types';
+import { supabase } from '../supabase';
 
 interface SignInPageProps {
   onSignInSuccess: (user: UserAccount) => void;
@@ -25,7 +26,7 @@ export default function SignInPage({
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -36,131 +37,82 @@ export default function SignInPage({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      // Check registered users in localStorage
-      let users: (UserAccount & { password?: string })[] = [];
-      try {
-        const storedUsers = localStorage.getItem('synbio_registered_users');
-        if (storedUsers) {
-          users = JSON.parse(storedUsers);
-        }
-      } catch (err) {
-        console.error(err);
-      }
+    try {
+      // 1. Authenticate with Supabase Auth
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
 
-      // If user storage is totally fresh, pre-seed primary demo and admin accounts
-      if (users.length === 0) {
-        const defaultUser = {
-          id: 'user_calista_default',
-          name: 'Calista Peng',
-          email: 'calistapeng7@gmail.com',
-          createdAt: new Date().toISOString(),
-          password: 'password123',
-          role: 'creator',
-        };
-        const adminUser = {
-          id: 'user_admin_default',
-          name: 'System Admin',
-          email: 'admin@synbio.org',
-          createdAt: new Date().toISOString(),
-          password: 'admin123',
-          role: 'admin',
-        };
-        users = [defaultUser, adminUser];
-        localStorage.setItem('synbio_registered_users', JSON.stringify(users));
-      } else {
-        // Ensure admin user exists in list
-        const hasAdmin = users.some((u) => u.email.toLowerCase() === 'admin@synbio.org');
-        if (!hasAdmin) {
-          users.push({
-            id: 'user_admin_default',
-            name: 'System Admin',
-            email: 'admin@synbio.org',
-            createdAt: new Date().toISOString(),
-            password: 'admin123',
-            role: 'admin',
-          });
-          localStorage.setItem('synbio_registered_users', JSON.stringify(users));
-        }
-      }
-
-      const existingUser = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-
-      // 1. Unregistered email: deny sign in, prompt user, and redirect to Sign Up
-      if (!existingUser) {
+      if (authError) {
         setIsLoading(false);
-        setError('This email has not been registered yet. Redirecting you to sign up...');
-        setTimeout(() => {
-          onGoToSignUp();
-        }, 1200);
+        setError(authError.message || 'Invalid login credentials.');
         return;
       }
 
-      // 2. Incorrect password check: strictly fail if password does not match
-      if (existingUser.password && existingUser.password !== password) {
+      if (data?.user) {
+        const userId = data.user.id;
+        const userEmail = data.user.email || email.trim();
+        const userMetadata = data.user.user_metadata || {};
+
+        // 2. Query profiles table for role and profile info
+        let profile: any = null;
+        try {
+          const { data: profData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+          profile = profData;
+        } catch (profErr) {
+          console.warn('Profile fetch notice:', profErr);
+        }
+
+        const role = profile?.role || userMetadata.role || 'creator';
+        const normalizedRole = String(role).toLowerCase() === 'admin' ? 'admin' : 'creator';
+
+        const loggedUser: UserAccount = {
+          id: userId,
+          name:
+            profile?.name ||
+            profile?.full_name ||
+            userMetadata.name ||
+            userMetadata.full_name ||
+            userEmail.split('@')[0],
+          email: userEmail,
+          role: normalizedRole,
+          createdAt: profile?.created_at || data.user.created_at || new Date().toISOString(),
+          bio:
+            profile?.bio ||
+            'Synthetic biology researcher exploring computational design and bio-manufacturing interfaces.',
+          affiliation: profile?.affiliation || 'Independent Research Fellow',
+          identityTag:
+            profile?.identity_tag ||
+            (normalizedRole === 'admin' ? 'System Administrator' : 'Principal Investigator'),
+          notifications: {
+            emailUpdates: true,
+            labMatches: true,
+            collaborationRequests: true,
+            weeklyDigest: false,
+          },
+        };
+
+        localStorage.setItem('synbio_current_user', JSON.stringify(loggedUser));
         setIsLoading(false);
-        setError('Incorrect password. Please verify your password and try again.');
+        onSignInSuccess(loggedUser);
         return;
       }
 
-      // Log in as existing user
-      const loggedUser: UserAccount = {
-        id: existingUser.id,
-        name: existingUser.name,
-        email: existingUser.email,
-        createdAt: existingUser.createdAt,
-        bio: existingUser.bio,
-        affiliation: existingUser.affiliation,
-        identityTag: existingUser.identityTag,
-        notifications: existingUser.notifications,
-      };
-      localStorage.setItem('synbio_current_user', JSON.stringify(loggedUser));
       setIsLoading(false);
-      onSignInSuccess(loggedUser);
-    }, 400);
+      setError('Unable to sign in. Please try again.');
+    } catch (err: any) {
+      setIsLoading(false);
+      setError(err?.message || 'An unexpected error occurred during sign in.');
+    }
   };
 
   const handleGoogleSignIn = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      // Check if Google account is in registered users
-      let users: (UserAccount & { password?: string })[] = [];
-      try {
-        const storedUsers = localStorage.getItem('synbio_registered_users');
-        if (storedUsers) {
-          users = JSON.parse(storedUsers);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      const googleEmail = 'calistapeng7@gmail.com';
-      const existingUser = users.find((u) => u.email.toLowerCase() === googleEmail.toLowerCase());
-
-      if (!existingUser) {
-        setIsLoading(false);
-        setError('This Google account is not registered yet. Redirecting to sign up...');
-        setTimeout(() => {
-          onGoToSignUp();
-        }, 1200);
-        return;
-      }
-
-      const googleUser: UserAccount = {
-        id: existingUser.id,
-        name: existingUser.name,
-        email: existingUser.email,
-        createdAt: existingUser.createdAt,
-        bio: existingUser.bio,
-        affiliation: existingUser.affiliation,
-        identityTag: existingUser.identityTag,
-        notifications: existingUser.notifications,
-      };
-
-      localStorage.setItem('synbio_current_user', JSON.stringify(googleUser));
-      setIsLoading(false);
-      onSignInSuccess(googleUser);
-    }, 400);
+    setError('Google sign-in is coming soon.');
   };
 
   return (
@@ -294,37 +246,6 @@ export default function SignInPage({
             </svg>
             Sign in with Google
           </button>
-
-          {/* Quick Demo Access Helpers */}
-          <div className="pt-2 border-t border-white/5 flex flex-col items-center gap-2">
-            <span className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold">
-              Demo Credentials
-            </span>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@synbio.org');
-                  setPassword('admin123');
-                }}
-                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
-                title="Fill admin account"
-              >
-                Admin (admin@synbio.org)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('calistapeng7@gmail.com');
-                  setPassword('password123');
-                }}
-                className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
-                title="Fill user account"
-              >
-                User (calistapeng7@gmail.com)
-              </button>
-            </div>
-          </div>
         </form>
 
         <div className="mt-8 text-center text-xs text-neutral-400">

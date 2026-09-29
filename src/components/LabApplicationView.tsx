@@ -18,39 +18,71 @@ import {
   FileText,
   HelpCircle,
 } from 'lucide-react';
+import { UserAccount } from '../types';
+import { supabase } from '../supabase';
 
 interface LabApplicationViewProps {
+  currentUser?: UserAccount | null;
   onBack: () => void;
   onSubmittedToast?: (msg: string) => void;
 }
 
 export default function LabApplicationView({
+  currentUser,
   onBack,
   onSubmittedToast,
 }: LabApplicationViewProps) {
   const [labName, setLabName] = useState('');
-  const [institution, setInstitution] = useState('');
+  const [institution, setInstitution] = useState(currentUser?.affiliation || '');
   const [domain, setDomain] = useState('Synthetic Biology');
   const [researchDirections, setResearchDirections] = useState('');
   const [teamSummary, setTeamSummary] = useState('');
   const [pastProjects, setPastProjects] = useState('');
-  const [leadPI, setLeadPI] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
+  const [leadPI, setLeadPI] = useState(currentUser?.name || '');
+  const [contactEmail, setContactEmail] = useState(currentUser?.email || '');
   const [contactPhone, setContactPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
     setIsSubmitting(true);
-    // UI placeholder per prompt requirement: 表单仅UI占位，提交功能暂不实现
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsSubmitted(true);
-      if (onSubmittedToast) {
-        onSubmittedToast('Laboratory onboarding application submitted for editorial review.');
+    
+    try {
+      const { error } = await supabase.from('labs').insert({
+        name: labName.trim(),
+        institution: institution.trim(),
+        domain,
+        research_directions: researchDirections.trim(),
+        team_overview: teamSummary.trim(),
+        past_projects: pastProjects.trim(),
+        pi_name: leadPI.trim(),
+        contact_email: contactEmail.trim(),
+        phone: contactPhone.trim(),
+        status: 'pending',
+        user_id: currentUser?.id || null,
+      });
+
+      if (error) {
+        console.warn('Could not insert to Supabase labs table:', error);
+        setErrorMsg(`Failed to submit application: ${error.message || 'Database error'}`);
+        setIsSubmitting(false);
+        return;
       }
-    }, 600);
+    } catch (err: any) {
+      console.warn('Could not insert to Supabase labs table:', err);
+      setErrorMsg(`Failed to submit application: ${err?.message || 'Database error'}`);
+      setIsSubmitting(false);
+      return;
+    }
+
+    setIsSubmitting(false);
+    setIsSubmitted(true);
+    if (onSubmittedToast) {
+      onSubmittedToast('Laboratory onboarding application submitted for editorial review.');
+    }
   };
 
   return (
@@ -106,6 +138,11 @@ export default function LabApplicationView({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-8">
+            {errorMsg && (
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium">
+                {errorMsg}
+              </div>
+            )}
             {/* Section 1: Lab & Affiliation */}
             <div className="p-6 sm:p-8 rounded-3xl bg-[#0e0e11] border border-white/10 space-y-5">
               <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
